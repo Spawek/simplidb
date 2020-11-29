@@ -1,16 +1,16 @@
 extern crate nom;
 
-use std::path::{Path, PathBuf};
-use std::{fs, io};
+use nom::branch::alt;
+use nom::bytes::complete::{tag, take_while, take_while1};
 use nom::error::ErrorKind;
 use nom::error::ParseError;
+use nom::multi::{many0, many_till};
+use nom::sequence::tuple;
 use nom::Err::Error;
 use nom::IResult;
-use nom::bytes::complete::{tag, take_while, take_while1};
-use nom::branch::alt;
-use nom::sequence::tuple;
-use nom::multi::{many_till, many0};
-use crate::TextToken::Whitespace;
+use std::path::{Path, PathBuf};
+use std::{fs, io};
+use simplidb::lexer::tokenize;
 
 #[derive(Debug)]
 struct Database {
@@ -148,66 +148,13 @@ impl<I> ParseError<I> for SqlParseError {
 }
 
 impl SqlParseError {
-    fn new(s :&str) -> SqlParseError {
+    fn new(s: &str) -> SqlParseError {
         return SqlParseError::Err(s.to_owned());
     }
 }
 
 // https://codeandbitters.com/lets-build-a-parser/
 
-#[derive(Debug, Clone)]
-enum TextToken {
-    Identifier(String),
-    Literal(String),
-    Comma,
-    Parens(Vec<TextToken>),
-    Whitespace,
-}
-
-fn parens(s: &str) -> nom::IResult<&str, TextToken> {
-    let (s, _) = tag("(")(s)?;
-    let (s, subtokens) = text_tokenize(s)?;
-    let (s, _) = tag(")")(s)?;
-    Ok((s, TextToken::Parens(subtokens)))
-}
-
-fn is_literal_character(c: char) -> bool {
-    c != '"'
-}
-
-fn literal(s: &str) -> nom::IResult<&str, TextToken> {
-    let (s, _) = tag("\"")(s)?;
-    let (s, text) = take_while(is_literal_character)(s)?;
-    let (s, _) = tag("\"")(s)?;
-    Ok((s, TextToken::Literal(text.to_owned())))
-}
-
-fn const_token(name: &str, token: TextToken) -> Box<dyn Fn(&str) -> nom::IResult<&str, TextToken>> {
-    let name = name.to_owned();
-    Box::new(move |s| tag(&*name)(s).map(|(x, _)| (x, token.clone())))
-}
-
-fn is_whitespace(c: char) -> bool {
-    c == ' ' || c == '\n' || c == '\t'
-}
-
-fn whitespace(s: &str) -> nom::IResult<&str, TextToken> {
-    let (s, _) = take_while1(is_whitespace)(s)?;
-    Ok((s, TextToken::Whitespace))
-}
-
-// should work for `(")")`
-fn text_tokenize(s: &str) -> nom::IResult<&str, Vec<TextToken>> {
-    let (s, r) = alt((
-        parens,
-        literal,
-        const_token(",", TextToken::Comma),
-        whitespace,
-        // identifier()
-    )
-    )(s)?;
-    Ok((s, vec![r]))
-}
 
 #[derive(Debug, Clone)]
 enum SqlToken {
@@ -235,10 +182,9 @@ fn sql_tokenize(s: &str) -> nom::IResult<&str, Vec<SqlToken>> {
             keyword("select", SqlToken::Select),
             keyword("from", SqlToken::From),
             keyword(",", SqlToken::Comma),
-        )
-        // tag("from"),
-        //
-        // tag(",")
+        ), // tag("from"),
+           //
+           // tag(",")
     )(s)?;
 
     Ok((s, vec![x]))
@@ -273,10 +219,7 @@ fn main() -> std::result::Result<(), io::Error> {
     let result = execute(select, db);
     println!("query result: {:#?}", result);
 
-    // dbg!(parse("select a,b from employees"));
-    // dbg!(text_tokenize(r#"(")")"#));
-    // dbg!(text_tokenize(r#"Identifier (")")"#));
-    dbg!(text_tokenize(r#"((""))"#));
+    dbg!(tokenize("select a,b from employees"));
 
     Ok(())
 }
