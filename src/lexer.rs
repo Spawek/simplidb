@@ -1,17 +1,21 @@
+use crate::lexer::Token::{Keyword, Identifier};
 use nom::branch::alt;
-use nom::bytes::complete::{is_not, tag, take_while, take_while1};
+use nom::bytes::complete::{is_not, tag, tag_no_case, take_while, take_while1, is_a};
 use nom::combinator::{all_consuming, eof};
 use nom::multi::many0;
 use nom::sequence::delimited;
+use nom::InputLength;
+use nom::error::{ErrorKind, Error, ParseError};
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Token {
     // TODO: add keywords here? they are reserved in sql
     // TODO: add numbers + operators (later)
+    Keyword(String),
     Identifier(String),
     Literal(String),
     Comma,
-    Parens(Vec<Token>),  // TODO: ask Lukasz if it's normal to match parens in Tokenizer
+    Parens(Vec<Token>),
 }
 
 fn parens(s: &str) -> nom::IResult<&str, Option<Token>> {
@@ -66,6 +70,61 @@ fn comment(s: &str) -> nom::IResult<&str, Option<Token>> {
     alt((line_comment, block_comment))(s)
 }
 
+// case insensitive
+fn take_identifier(name: &str) -> Box<dyn Fn(&[Token]) -> nom::IResult<&[Token], &[Token]>> {
+    let name = name.to_owned();
+    Box::new( move |i: &[Token]| {
+        dbg!(&name);
+        dbg!(&i);
+        let elem = match i.first() {
+            Some(v) => v,
+            None => {
+                dbg!(1);
+                return Err(nom::Err::Error(Error::from_error_kind(i, ErrorKind::Eof)));  // TODO: fix errors
+            }
+        };
+
+        if let Token::Identifier(curr) = elem {
+            if curr.to_lowercase() == name.to_lowercase() {
+                Ok(i.split_at(1))
+            }
+            else {
+                dbg!(2);
+                Err(nom::Err::Error(Error::from_error_kind(i, ErrorKind::TagBits)))  // NO IDEA WHAT TAG TO TAKE
+            }
+        }
+        else
+        {
+            dbg!(3);
+            Err(nom::Err::Error(Error::from_error_kind(i, ErrorKind::TagBits)))
+        }
+    })
+}
+
+/// identifiers are split by " " token
+fn keyword(name: &str) -> Box<dyn Fn(&[Token]) -> nom::IResult<&[Token], Token>> {
+    let name = name.to_owned();
+    Box::new(move |s| {
+        let mut x = s;
+        for n in name.split(" "){
+            x = take_identifier(n)(x)?.1;
+        }
+        Ok((&x, Token::Keyword(name.to_owned())))
+    })
+}
+
+// "LEFT JOIN" and "JOIN" are different keywords
+fn resolve_keywords(s: &[Token]) -> nom::IResult<&[Token], Vec<Token>> {
+    let (s, r) = many0(alt((
+        keyword("left join"),
+        keyword("join"),
+        keyword("select"),
+        // TODO: add something accepting anything and returning nothing
+    )))(s)?;
+
+    Ok((s, r))
+}
+
 fn tokenize_internal(s: &str) -> nom::IResult<&str, Vec<Token>> {
     let (s, r) = many0(alt((
         comment,
@@ -76,7 +135,10 @@ fn tokenize_internal(s: &str) -> nom::IResult<&str, Vec<Token>> {
         identifier,
     )))(s)?;
 
-    Ok((s, r.into_iter().flatten().collect()))
+    let tokens : Vec<Token> = r.into_iter().flatten().collect();
+    let (_, tokens) = all_consuming(resolve_keywords)(tokens.as_slice()).expect("resolve keywords failed");  // TODO: fix error passing
+
+    Ok((s, tokens))
 }
 
 pub fn tokenize(s: &str) -> nom::IResult<&str, Vec<Token>> {
@@ -145,7 +207,10 @@ mod tests {
     fn test_line_comment() {
         assert_eq!(
             tokenize("id1--id2\nid3").unwrap().1,
-            vec![Token::Identifier("id1".to_owned()), Token::Identifier("id3".to_owned())]
+            vec![
+                Token::Identifier("id1".to_owned()),
+                Token::Identifier("id3".to_owned())
+            ]
         )
     }
 }

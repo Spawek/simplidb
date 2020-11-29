@@ -219,7 +219,7 @@ fn main() -> std::result::Result<(), io::Error> {
     let result = execute(select, db);
     println!("query result: {:#?}", result);
 
-    dbg!(tokenize("select a,b from employees"));
+    dbg!(tokenize("left join"));
 
     Ok(())
 }
