@@ -1,9 +1,9 @@
 use nom::branch::alt;
 use nom::bytes::complete::{is_not, tag, take_while, take_while1};
 use nom::combinator::{all_consuming, eof};
+use nom::error::{Error, ErrorKind, ParseError};
 use nom::multi::many0;
 use nom::sequence::delimited;
-use nom::error::{ErrorKind, Error, ParseError};
 
 // https://codeandbitters.com/lets-build-a-parser/
 
@@ -76,7 +76,7 @@ fn comment(s: &str) -> nom::IResult<&str, Option<Token>> {
 // case insensitive
 fn take_identifier(name: &str) -> Box<dyn Fn(&[Token]) -> nom::IResult<&[Token], &[Token]>> {
     let name = name.to_owned();
-    Box::new( move |i: &[Token]| {
+    Box::new(move |i: &[Token]| {
         let elem = match i.first() {
             Some(v) => v,
             None => {
@@ -86,21 +86,21 @@ fn take_identifier(name: &str) -> Box<dyn Fn(&[Token]) -> nom::IResult<&[Token],
 
         if let Token::Identifier(curr) = elem {
             if curr.to_lowercase() == name.to_lowercase() {
-                return Ok((&i[1..], &i[0..]));
+                return Ok((&i[1..], &i[..1]));
             }
         }
 
-        Err(nom::Err::Error(Error::from_error_kind(i, ErrorKind::TagBits)))
+        Err(nom::Err::Error(Error::from_error_kind(  // TODO: create custom errors
+            i,
+            ErrorKind::TagBits,
+        )))
     })
 }
 
 fn take_any(i: &[Token]) -> nom::IResult<&[Token], Token> {
     match i.first() {
-        Some(v) => {
-            Ok((&i[1..], v.to_owned()))
-        },
-        None =>
-            Err(nom::Err::Error(Error::from_error_kind(i, ErrorKind::Eof)))
+        Some(v) => Ok((&i[1..], v.to_owned())),
+        None => Err(nom::Err::Error(Error::from_error_kind(i, ErrorKind::Eof))),
     }
 }
 
@@ -126,7 +126,7 @@ fn resolve_keywords(s: &[Token]) -> nom::IResult<&[Token], Vec<Token>> {
         keyword("where"),
         keyword("left join"),
         keyword("join"),
-        take_any
+        take_any,
     )))(s)?;
 
     Ok((s, r))
@@ -142,8 +142,9 @@ fn tokenize_internal(s: &str) -> nom::IResult<&str, Vec<Token>> {
         identifier,
     )))(s)?;
 
-    let tokens : Vec<Token> = r.into_iter().flatten().collect();
-    let (_, tokens) = all_consuming(resolve_keywords)(tokens.as_slice()).expect("resolve keywords failed");  // TODO: fix error passing
+    let tokens: Vec<Token> = r.into_iter().flatten().collect();
+    let (_, tokens) =
+        all_consuming(resolve_keywords)(tokens.as_slice()).expect("resolve keywords failed"); // TODO: fix error passing  // NOTE: I don't think resolve keywords should ever fail as it accepts every token, so maybe there is no point of fighting with errors
 
     Ok((s, tokens))
 }
@@ -221,7 +222,9 @@ mod tests {
     #[test]
     fn test_keywords() {
         assert_eq!(
-            tokenize("SELECT x,y FROM t1 LEFT JOIN t2 JOIN t3").unwrap().1,
+            tokenize("SELECT x,y FROM t1 LEFT JOIN t2 JOIN t3")
+                .unwrap()
+                .1,
             vec![
                 Token::Keyword("SELECT".to_owned()),
                 Token::Identifier("x".to_owned()),
