@@ -1,21 +1,24 @@
-use crate::lexer::Token::{Keyword, Identifier};
 use nom::branch::alt;
-use nom::bytes::complete::{is_not, tag, tag_no_case, take_while, take_while1, is_a};
+use nom::bytes::complete::{is_not, tag, take_while, take_while1};
 use nom::combinator::{all_consuming, eof};
 use nom::multi::many0;
 use nom::sequence::delimited;
-use nom::InputLength;
 use nom::error::{ErrorKind, Error, ParseError};
+
+// https://codeandbitters.com/lets-build-a-parser/
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Token {
-    // TODO: add keywords here? they are reserved in sql
     // TODO: add numbers + operators (later)
     Keyword(String),
     Identifier(String),
     Literal(String),
     Comma,
     Parens(Vec<Token>),
+}
+
+pub fn tokenize(s: &str) -> nom::IResult<&str, Vec<Token>> {
+    all_consuming(tokenize_internal)(s)
 }
 
 fn parens(s: &str) -> nom::IResult<&str, Option<Token>> {
@@ -74,52 +77,56 @@ fn comment(s: &str) -> nom::IResult<&str, Option<Token>> {
 fn take_identifier(name: &str) -> Box<dyn Fn(&[Token]) -> nom::IResult<&[Token], &[Token]>> {
     let name = name.to_owned();
     Box::new( move |i: &[Token]| {
-        dbg!(&name);
-        dbg!(&i);
         let elem = match i.first() {
             Some(v) => v,
             None => {
-                dbg!(1);
-                return Err(nom::Err::Error(Error::from_error_kind(i, ErrorKind::Eof)));  // TODO: fix errors
+                return Err(nom::Err::Error(Error::from_error_kind(i, ErrorKind::Eof)));
             }
         };
 
         if let Token::Identifier(curr) = elem {
             if curr.to_lowercase() == name.to_lowercase() {
-                Ok(i.split_at(1))
-            }
-            else {
-                dbg!(2);
-                Err(nom::Err::Error(Error::from_error_kind(i, ErrorKind::TagBits)))  // NO IDEA WHAT TAG TO TAKE
+                return Ok((&i[1..], &i[0..]));
             }
         }
-        else
-        {
-            dbg!(3);
-            Err(nom::Err::Error(Error::from_error_kind(i, ErrorKind::TagBits)))
-        }
+
+        Err(nom::Err::Error(Error::from_error_kind(i, ErrorKind::TagBits)))
     })
 }
 
+fn take_any(i: &[Token]) -> nom::IResult<&[Token], Token> {
+    match i.first() {
+        Some(v) => {
+            Ok((&i[1..], v.to_owned()))
+        },
+        None =>
+            Err(nom::Err::Error(Error::from_error_kind(i, ErrorKind::Eof)))
+    }
+}
+
 /// identifiers are split by " " token
+/// keywords are returned in uppercase
 fn keyword(name: &str) -> Box<dyn Fn(&[Token]) -> nom::IResult<&[Token], Token>> {
     let name = name.to_owned();
     Box::new(move |s| {
         let mut x = s;
-        for n in name.split(" "){
-            x = take_identifier(n)(x)?.1;
+        for n in name.split(" ") {
+            x = take_identifier(n)(x)?.0;
         }
-        Ok((&x, Token::Keyword(name.to_owned())))
+        Ok((&x, Token::Keyword(name.to_uppercase())))
     })
 }
 
-// "LEFT JOIN" and "JOIN" are different keywords
 fn resolve_keywords(s: &[Token]) -> nom::IResult<&[Token], Vec<Token>> {
+    // Keywords contained by other keywords must be placed after them - e.g.
+    // "join" must be further in the list than "left join".
     let (s, r) = many0(alt((
+        keyword("select"),
+        keyword("from"),
+        keyword("where"),
         keyword("left join"),
         keyword("join"),
-        keyword("select"),
-        // TODO: add something accepting anything and returning nothing
+        take_any
     )))(s)?;
 
     Ok((s, r))
@@ -139,10 +146,6 @@ fn tokenize_internal(s: &str) -> nom::IResult<&str, Vec<Token>> {
     let (_, tokens) = all_consuming(resolve_keywords)(tokens.as_slice()).expect("resolve keywords failed");  // TODO: fix error passing
 
     Ok((s, tokens))
-}
-
-pub fn tokenize(s: &str) -> nom::IResult<&str, Vec<Token>> {
-    all_consuming(tokenize_internal)(s)
 }
 
 #[cfg(test)]
@@ -203,6 +206,7 @@ mod tests {
             vec![Token::Identifier("id".to_owned())]
         )
     }
+
     #[test]
     fn test_line_comment() {
         assert_eq!(
@@ -212,5 +216,24 @@ mod tests {
                 Token::Identifier("id3".to_owned())
             ]
         )
+    }
+
+    #[test]
+    fn test_keywords() {
+        assert_eq!(
+            tokenize("SELECT x,y FROM t1 LEFT JOIN t2 JOIN t3").unwrap().1,
+            vec![
+                Token::Keyword("SELECT".to_owned()),
+                Token::Identifier("x".to_owned()),
+                Token::Comma,
+                Token::Identifier("y".to_owned()),
+                Token::Keyword("FROM".to_owned()),
+                Token::Identifier("t1".to_owned()),
+                Token::Keyword("LEFT JOIN".to_owned()),
+                Token::Identifier("t2".to_owned()),
+                Token::Keyword("JOIN".to_owned()),
+                Token::Identifier("t3".to_owned()),
+            ]
+        );
     }
 }

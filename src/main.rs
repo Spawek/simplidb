@@ -1,13 +1,5 @@
 extern crate nom;
 
-use nom::branch::alt;
-use nom::bytes::complete::{tag, take_while, take_while1};
-use nom::error::ErrorKind;
-use nom::error::ParseError;
-use nom::multi::{many0, many_till};
-use nom::sequence::tuple;
-use nom::Err::Error;
-use nom::IResult;
 use std::path::{Path, PathBuf};
 use std::{fs, io};
 use simplidb::lexer::tokenize;
@@ -137,67 +129,6 @@ pub enum SqlParseError {
     Err(String),
 }
 
-impl<I> ParseError<I> for SqlParseError {
-    fn from_error_kind(input: I, kind: ErrorKind) -> Self {
-        SqlParseError::Err(format!("From Nom error: {:?}", kind))
-    }
-
-    fn append(_: I, _: ErrorKind, other: Self) -> Self {
-        other
-    }
-}
-
-impl SqlParseError {
-    fn new(s: &str) -> SqlParseError {
-        return SqlParseError::Err(s.to_owned());
-    }
-}
-
-// https://codeandbitters.com/lets-build-a-parser/
-
-
-#[derive(Debug, Clone)]
-enum SqlToken {
-    // Keywords
-    Select,
-    From,
-    As,
-
-    Identifier(String),
-    Literal(String),
-    Comma,
-}
-
-fn keyword(name: &str, token: SqlToken) -> Box<dyn Fn(&str) -> nom::IResult<&str, SqlToken>> {
-    let name = name.to_owned();
-    Box::new(move |s| tag(&*name)(s).map(|(x, _)| (x, token.clone())))
-}
-
-// TODO: change input to TextTokens
-fn sql_tokenize(s: &str) -> nom::IResult<&str, Vec<SqlToken>> {
-    // TODO: use lazy static if it's super slow
-    // TODO: split to words first so "SELECT_DSADSA" doesn't match with "SELECT"
-    let (s, x) = alt(
-        (
-            keyword("select", SqlToken::Select),
-            keyword("from", SqlToken::From),
-            keyword(",", SqlToken::Comma),
-        ), // tag("from"),
-           //
-           // tag(",")
-    )(s)?;
-
-    Ok((s, vec![x]))
-}
-
-// // // TODO: to_lowercase?
-// fn parse(s: &str) -> nom::IResult<&str, SelectExpression, SqlParseError> {
-//     let (s, _) = nom::bytes::complete::tag("select")(s)?;
-//     let (s, columns) = nom::multi::separated_list0(tag(","), );
-//     let (s, _) = nom::bytes::complete::tag("from")(s)?;
-//     Ok((s, SelectExpression{ columns: vec![], source: DataSource::Datastore{ name: "".to_owned() }}))
-// }
-
 fn main() -> std::result::Result<(), io::Error> {
     let employee = read_csv(
         Path::new(r"C:\maciek\programowanie\simplidb\database\employee.csv"),
@@ -218,8 +149,6 @@ fn main() -> std::result::Result<(), io::Error> {
 
     let result = execute(select, db);
     println!("query result: {:#?}", result);
-
-    dbg!(tokenize("left join"));
 
     Ok(())
 }
