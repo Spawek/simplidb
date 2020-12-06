@@ -77,17 +77,6 @@ impl<I> ParseError<I> for SqlParseError {
     }
 }
 
-// // Value preceded by a comma.
-// // Return the value.
-// fn comma_separated_values<I, O, E, F>(
-//     mut parser: F
-// ) -> impl FnMut(I) -> IResult<I, O, E>
-// where
-//     F: Parser<I, O, E>
-// {
-//
-// }
-
 fn parse_internal(s: &[Token]) -> IResult<&[Token], SelectExpression, SqlParseError> {
     let (s, _) = take_keyword("SELECT")(s)?;
     let (s, columns) = separated_list1(take_token(Token::Comma), take_identifier)(s)?;
