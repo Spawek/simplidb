@@ -1,6 +1,5 @@
 extern crate nom;
 
-use simplidb::lexer::tokenize;
 use simplidb::parser::{SelectExpression, DataSource};
 use std::path::Path;
 use simplidb::database::{Database, Column};
