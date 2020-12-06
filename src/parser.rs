@@ -3,7 +3,7 @@ use core::fmt;
 use nom::error::{ErrorKind, ParseError};
 use nom::IResult;
 use std::error::Error;
-use nom::bytes::complete::take;
+use nom::multi::separated_list1;
 
 #[derive(Debug, PartialEq)]
 pub struct SelectExpression {
@@ -77,16 +77,27 @@ impl<I> ParseError<I> for SqlParseError {
     }
 }
 
+// // Value preceded by a comma.
+// // Return the value.
+// fn comma_separated_values<I, O, E, F>(
+//     mut parser: F
+// ) -> impl FnMut(I) -> IResult<I, O, E>
+// where
+//     F: Parser<I, O, E>
+// {
+//
+// }
+
 fn parse_internal(s: &[Token]) -> IResult<&[Token], SelectExpression, SqlParseError> {
     let (s, _) = take_keyword("SELECT")(s)?;
-    let (s, col) = take_identifier(s)?;
+    let (s, columns) = separated_list1(take_token(Token::Comma), take_identifier)(s)?;
     let (s, _) = take_keyword("FROM")(s)?;
     let (s, table) = take_identifier(s)?;
 
     Ok((
         s,
         SelectExpression {
-            columns: vec![col],
+            columns: columns,
             source: DataSource::Datastore {
                 name: table
             },
@@ -176,4 +187,31 @@ mod tests {
             }
         );
     }
+
+    #[test]
+    fn test_select_from_lowercase() {
+        assert_eq!(
+            parse("select x from t").unwrap(),
+            SelectExpression {
+                columns: vec!["x".to_owned()],
+                source: DataSource::Datastore {
+                    name: "t".to_owned()
+                }
+            }
+        );
+    }
+
+    #[test]
+    fn test_2_columns() {
+        assert_eq!(
+            parse("SELECT x,y FROM t").unwrap(),
+            SelectExpression {
+                columns: vec!["x".to_owned(), "y".to_owned()],
+                source: DataSource::Datastore {
+                    name: "t".to_owned()
+                }
+            }
+        );
+    }
+
 }

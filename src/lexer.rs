@@ -22,10 +22,8 @@ pub fn tokenize(s: &str) -> nom::IResult<&str, Vec<Token>> {
 }
 
 fn parens(s: &str) -> nom::IResult<&str, Option<Token>> {
-    let (s, _) = tag("(")(s)?;
-    let (s, inner) = tokenize_internal(s)?;
-    let (s, _) = tag(")")(s)?;
-    Ok((s, Some(Token::Parens(inner))))
+    let(s, v) = delimited(tag("("), tokenize_internal, tag(")"))(s)?;
+    Ok((s, Some(Token::Parens(v))))
 }
 
 fn is_literal_character(c: char) -> bool {
@@ -33,9 +31,7 @@ fn is_literal_character(c: char) -> bool {
 }
 
 fn literal(s: &str) -> nom::IResult<&str, Option<Token>> {
-    let (s, _) = tag("\"")(s)?;
-    let (s, text) = take_while(is_literal_character)(s)?;
-    let (s, _) = tag("\"")(s)?;
+    let (s, text) = delimited(tag("\""), take_while(is_literal_character), tag("\""))(s)?;
     Ok((s, Some(Token::Literal(text.to_owned()))))
 }
 
