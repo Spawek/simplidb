@@ -23,10 +23,11 @@ pub fn parse(s: &str) -> Result<SelectExpression, String>{
 }
 
 #[derive(Debug, PartialEq)]
+// TODO: add <I> template and pass it to NomError if it can be helpful
 pub enum SqlParseError {
     CustomError(String),
     Eof,
-    Unparseable(ErrorKind),
+    NomError(ErrorKind),
 }
 
 impl Error for SqlParseError {
@@ -40,14 +41,14 @@ impl fmt::Display for SqlParseError {
         match self{
             SqlParseError::CustomError(e) => { write!(f, "Custom error: {}", e) }
             SqlParseError::Eof  => { write!(f, "Unexpected end of file") }
-            SqlParseError::Unparseable(kind) => { write!(f, "Nom could not parse input - err: {:?}", &kind) }
+            SqlParseError::NomError(kind) => { write!(f, "Nom could not parse input - err: {:?}", &kind) }
         }
     }
 }
 
 impl<I> ParseError<I> for SqlParseError {
     fn from_error_kind(_input: I, kind: ErrorKind) -> Self {
-        SqlParseError::Unparseable(kind)
+        SqlParseError::NomError(kind)
     }
 
     fn append(_: I, _: ErrorKind, other: Self) -> Self {
